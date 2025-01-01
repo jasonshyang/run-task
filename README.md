@@ -11,19 +11,19 @@ Import prelude
 use run_task::prelude::*;
 ```
 
-Implement `Runnable<T>` for a data task you want to run that deals with type `T`, you can define multiple tasks as long as they are all dealing with the same type `T`.
+Implement `Runnable<T, D>` for a data task you want to run that deals with type `T` and output type `D`, you can define multiple tasks as long as they are all dealing with the same type `T` and `D`.
 ```rust
-impl Runnable<T> for YourTask {
+impl Runnable<YourInputDataType, YourOutputDataType> for TestTaskA {
     fn name(&self) -> String {
         "Your Task Name".to_string()
     }
 
-    fn run(&self, data: &DB, _at: u64) -> Result<Data, TaskError> {
-        // define the data task here, e.g. calculating OHLCV (Open, High, Low, Close, Volume) for a trade time series data
-        // wrap the result in Value type, this can be f64, i64, bool or String.
-        // wrap the value in a Data type which serves as a container, it can be a Scalar, Vec, HashMap, or None if no value
+    fn run(&self, data: &YourInputDataType, at: u64) -> Result<YourOutputDataType, TaskError<YourOutputDataType>> {
+        // you can implement your actual task here
+
+        Ok(YourOutputDataType)
     }
-} 
+}
 ```
 
 Build the Task Runner Context with `ContextBuilder`, you can add your task by calling `.with_task()`, or call `.with_tasks()` to add a vector of tasks, add the underlying data wrapped with `Arc<RwLock<>>` so you can update the data as the task runner does its job.
@@ -49,5 +49,5 @@ spawn_runner(ctx);
 To see what the output looks like you can try:
 ```zsh
 cd run-task
-cargo run --example custom_struct
+cargo run --example timeseries
 ```

@@ -5,30 +5,30 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinError;
 
 #[derive(Error, Debug)]
-pub enum TaskError {
+pub enum TaskError<D> {
     #[error("TaskError: {0}")]
     TaskError(String),
     #[error("SendError: {0}")]
-    SendError(SendError<TaskResult>),
+    SendError(SendError<TaskResult<D>>),
     #[error("RecvError: {0}")]
     RecvError(RecvError),
     #[error("JoinError: {0}")]
     JoinError(JoinError),
 }
 
-impl From<SendError<TaskResult>> for TaskError {
-    fn from(error: SendError<TaskResult>) -> Self {
+impl<D> From<SendError<TaskResult<D>>> for TaskError<D> {
+    fn from(error: SendError<TaskResult<D>>) -> Self {
         TaskError::SendError(error)
     }
 }
 
-impl From<RecvError> for TaskError {
+impl<D> From<RecvError> for TaskError<D> {
     fn from(error: RecvError) -> Self {
         TaskError::RecvError(error)
     }
 }
 
-impl From<JoinError> for TaskError {
+impl<D> From<JoinError> for TaskError<D> {
     fn from(error: JoinError) -> Self {
         TaskError::JoinError(error)
     }

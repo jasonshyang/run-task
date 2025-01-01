@@ -1,3 +1,4 @@
+use core::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,19 +9,19 @@ use crate::data_types::DataSet;
 use crate::task::{TaskContext, TaskResult, Worker};
 use crate::{Runnable, TaskError, TaskInterval};
 
-pub struct Context<T> {
-    pub tasks: Vec<Arc<dyn Runnable<T>>>,
+pub struct Context<T, D> {
+    pub tasks: Vec<Arc<dyn Runnable<T, D>>>,
     pub data: Arc<RwLock<T>>,
     pub interval: TaskInterval,
-    pub sender: mpsc::Sender<DataSet>,
+    pub sender: mpsc::Sender<DataSet<D>>,
 }
 
-impl<T> Context<T> {
+impl<T, D> Context<T, D> {
     pub fn new(
-        tasks: Vec<Arc<dyn Runnable<T>>>,
+        tasks: Vec<Arc<dyn Runnable<T, D>>>,
         data: Arc<RwLock<T>>,
         interval: TaskInterval,
-    ) -> (Self, mpsc::Receiver<DataSet>) {
+    ) -> (Self, mpsc::Receiver<DataSet<D>>) {
         let (sender, receiver) = mpsc::channel(1024);
         let ctx = Context {
             tasks,
@@ -32,13 +33,13 @@ impl<T> Context<T> {
     }
 }
 
-pub struct ContextBuilder<T: Default> {
-    tasks: Vec<Arc<dyn Runnable<T>>>,
+pub struct ContextBuilder<T: Default, D> {
+    tasks: Vec<Arc<dyn Runnable<T, D>>>,
     data: Arc<RwLock<T>>,
     interval: TaskInterval,
 }
 
-impl<T: Default> ContextBuilder<T> {
+impl<T: Default, D> ContextBuilder<T, D> {
     pub fn new() -> Self {
         ContextBuilder {
             tasks: Vec::new(),
@@ -47,12 +48,12 @@ impl<T: Default> ContextBuilder<T> {
         }
     }
 
-    pub fn with_task(mut self, task: impl Runnable<T> + 'static) -> Self {
+    pub fn with_task(mut self, task: impl Runnable<T, D> + 'static) -> Self {
         self.tasks.push(Arc::new(task));
         self
     }
 
-    pub fn with_tasks(mut self, tasks: Vec<impl Runnable<T> + 'static>) -> Self {
+    pub fn with_tasks(mut self, tasks: Vec<impl Runnable<T, D> + 'static>) -> Self {
         for task in tasks {
             self.tasks.push(Arc::new(task));
         }
@@ -69,27 +70,27 @@ impl<T: Default> ContextBuilder<T> {
         self
     }
 
-    pub fn build(self) -> (Context<T>, mpsc::Receiver<DataSet>) {
+    pub fn build(self) -> (Context<T, D>, mpsc::Receiver<DataSet<D>>) {
         Context::new(self.tasks, self.data, self.interval)
     }
 }
 
-impl<T: Default> Default for ContextBuilder<T> {
+impl<T: Default, D> Default for ContextBuilder<T, D> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct Runner<T> {
-    pub ctx: Context<T>,
+pub struct Runner<T, D> {
+    pub ctx: Context<T, D>,
 }
 
-impl<T: Send + Sync + 'static> Runner<T> {
-    pub fn new(ctx: Context<T>) -> Self {
+impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
+    pub fn new(ctx: Context<T, D>) -> Self {
         Runner { ctx }
     }
 
-    pub async fn run(&self) -> Result<(), TaskError> {
+    pub async fn run(&self) -> Result<(), TaskError<D>> {
         let result_sender = self.ctx.sender.clone();
         let mut interval = interval(Duration::from_secs(self.ctx.interval.clone().as_secs()));
         let task_count = self.ctx.tasks.len();
@@ -141,7 +142,9 @@ impl<T: Send + Sync + 'static> Runner<T> {
     }
 }
 
-pub fn spawn_runner<T: Send + Sync + 'static>(ctx: Context<T>) {
+pub fn spawn_runner<T: Send + Sync + 'static, D: Send + Sync + 'static + fmt::Debug>(
+    ctx: Context<T, D>,
+) {
     tokio::spawn(async move {
         let runner = Runner::new(ctx);
         runner.run().await.unwrap();

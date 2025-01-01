@@ -1,36 +1,35 @@
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, RwLock};
 
-use crate::data_types::Data;
 use crate::TaskError;
 
-pub trait Runnable<T>: Send + Sync {
+pub trait Runnable<T, D>: Send + Sync {
     fn name(&self) -> String;
-    fn run(&self, data: &T, at: u64) -> Result<Data, TaskError>;
+    fn run(&self, data: &T, at: u64) -> Result<D, TaskError<D>>;
 }
 
-pub struct Worker<T> {
-    pub task: Arc<dyn Runnable<T>>,
-    pub ctx: TaskContext<T>,
+pub struct Worker<T, D> {
+    pub task: Arc<dyn Runnable<T, D>>,
+    pub ctx: TaskContext<T, D>,
 }
 
-pub struct TaskContext<T> {
+pub struct TaskContext<T, D> {
     pub data: Arc<RwLock<T>>,
     pub receiver: broadcast::Receiver<u64>,
-    pub sender: mpsc::Sender<TaskResult>,
+    pub sender: mpsc::Sender<TaskResult<D>>,
 }
 
-pub struct TaskResult {
+pub struct TaskResult<D> {
     pub name: String,
-    pub result: Data,
+    pub result: D,
 }
 
-impl<T> Worker<T> {
-    pub fn new(task: Arc<dyn Runnable<T>>, ctx: TaskContext<T>) -> Self {
+impl<T, D> Worker<T, D> {
+    pub fn new(task: Arc<dyn Runnable<T, D>>, ctx: TaskContext<T, D>) -> Self {
         Worker { task, ctx }
     }
 
-    pub async fn run(&mut self) -> Result<(), TaskError> {
+    pub async fn run(&mut self) -> Result<(), TaskError<D>> {
         let name = self.task.name().clone();
 
         loop {
