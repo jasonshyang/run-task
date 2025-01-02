@@ -92,10 +92,11 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
 
     pub async fn run(&self) -> Result<(), TaskError<D>> {
         let result_sender = self.ctx.sender.clone();
-        let mut interval = interval(Duration::from_secs(self.ctx.interval.clone().as_secs()));
+        let task_interval = self.ctx.interval.clone();
+        let mut interval = interval(Duration::from_micros(task_interval.as_micros()));
         let task_count = self.ctx.tasks.len();
 
-        let (time_broadcaster, _) = broadcast::channel::<u64>(1);
+        let (time_broadcaster, _) = broadcast::channel::<(u64, u64)>(1);
         let (output_sender, mut output_receiver) = mpsc::channel(task_count);
 
         // Spawn workers for each task which will run in the background waiting for StartWorkTime to start the task
@@ -116,9 +117,10 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
         let consolidator_handle = tokio::spawn(async move {
             loop {
                 interval.tick().await;
-                let timestamp = chrono::Utc::now().timestamp() as u64;
-                let mut dataset = DataSet::new(timestamp);
-                time_broadcaster.send(timestamp).unwrap();
+                let end = get_current_time(&task_interval);
+                let start = end - task_interval.as_u64();
+                let mut dataset = DataSet::new(end);
+                time_broadcaster.send((start, end)).unwrap();
 
                 // Collect the results from all workers, this blocks until all workers have sent their results
                 for _ in 0..task_count {
@@ -149,4 +151,14 @@ pub fn spawn_runner<T: Send + Sync + 'static, D: Send + Sync + 'static + fmt::De
         let runner = Runner::new(ctx);
         runner.run().await.unwrap();
     });
+}
+
+fn get_current_time(task_interval: &TaskInterval) -> u64 {
+    match task_interval {
+        TaskInterval::Micros(_) => chrono::Utc::now().timestamp_micros() as u64,
+        TaskInterval::Millis(_) => chrono::Utc::now().timestamp_millis() as u64,
+        TaskInterval::Seconds(_) => chrono::Utc::now().timestamp() as u64,
+        TaskInterval::Minutes(_) => (chrono::Utc::now().timestamp() * 60) as u64,
+    }
+
 }

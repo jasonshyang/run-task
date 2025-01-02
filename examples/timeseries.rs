@@ -22,14 +22,16 @@ struct OHLCA {
     low: f64,
     close: f64,
     volume: f64,
+    from: u64,
+    to: u64,
 }
 
 impl std::fmt::Debug for OHLCA {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "OHLCA {{ open: {}, high: {}, low: {}, close: {}, volume: {} }}",
-            self.open, self.high, self.low, self.close, self.volume
+            "OHLCA {{ open: {}, high: {}, low: {}, close: {}, volume: {}, from: {}, to: {} }}",
+            self.open, self.high, self.low, self.close, self.volume, self.from, self.to
         )
     }
 }
@@ -42,7 +44,7 @@ impl Runnable<TimeSeries, OHLCA> for TestTaskA {
         "TestTask_A".to_string()
     }
 
-    fn run(&self, data: &TimeSeries, _at: u64) -> Result<OHLCA, TaskError<OHLCA>> {
+    fn run(&self, data: &TimeSeries, from: u64, to: u64) -> Result<OHLCA, TaskError<OHLCA>> {
         let a = data.time_series.get(&1).unwrap();
         let b = data.time_series.get(&2).unwrap();
 
@@ -52,6 +54,8 @@ impl Runnable<TimeSeries, OHLCA> for TestTaskA {
             low: *a as f64,
             close: *b as f64,
             volume: 1000.0,
+            from,
+            to,
         })
     }
 }
@@ -63,7 +67,7 @@ impl Runnable<TimeSeries, OHLCA> for TestTaskB {
         "TestTask_B".to_string()
     }
 
-    fn run(&self, data: &TimeSeries, _at: u64) -> Result<OHLCA, TaskError<OHLCA>> {
+    fn run(&self, data: &TimeSeries, from: u64, to: u64) -> Result<OHLCA, TaskError<OHLCA>> {
         let (_, latest) = data.time_series.iter().last().unwrap();
 
         Ok(OHLCA {
@@ -72,6 +76,8 @@ impl Runnable<TimeSeries, OHLCA> for TestTaskB {
             low: (*latest * 100) as f64,
             close: (*latest * 100) as f64,
             volume: 1024.0,
+            from,
+            to,
         })
     }
 }
@@ -84,7 +90,7 @@ async fn main() {
         .with_task(TestTaskA)
         .with_task(TestTaskB)
         .with_data(data_clone)
-        .with_interval(TaskInterval::Seconds(3))
+        .with_interval(TaskInterval::Millis(450))
         .build();
 
     spawn_runner(ctx);

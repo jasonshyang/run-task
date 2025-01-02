@@ -5,7 +5,7 @@ use crate::TaskError;
 
 pub trait Runnable<T, D>: Send + Sync {
     fn name(&self) -> String;
-    fn run(&self, data: &T, at: u64) -> Result<D, TaskError<D>>;
+    fn run(&self, data: &T, start: u64, end: u64) -> Result<D, TaskError<D>>;
 }
 
 pub struct Worker<T, D> {
@@ -15,7 +15,7 @@ pub struct Worker<T, D> {
 
 pub struct TaskContext<T, D> {
     pub data: Arc<RwLock<T>>,
-    pub receiver: broadcast::Receiver<u64>,
+    pub receiver: broadcast::Receiver<(u64, u64)>,
     pub sender: mpsc::Sender<TaskResult<D>>,
 }
 
@@ -33,9 +33,9 @@ impl<T, D> Worker<T, D> {
         let name = self.task.name().clone();
 
         loop {
-            let timestamp = self.ctx.receiver.recv().await?;
+            let (start, end) = self.ctx.receiver.recv().await?;
             let data = self.ctx.data.read().await;
-            let result = self.task.run(&*data, timestamp)?;
+            let result = self.task.run(&*data, start, end)?;
             self.ctx
                 .sender
                 .send(TaskResult {
