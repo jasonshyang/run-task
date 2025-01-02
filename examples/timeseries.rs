@@ -11,7 +11,7 @@ impl Default for TimeSeries {
     fn default() -> Self {
         let mut data = BTreeMap::new();
         data.insert(1, 42);
-        data.insert(2, 1024);
+        data.insert(2, 1);
         TimeSeries { time_series: data }
     }
 }
@@ -64,14 +64,13 @@ impl Runnable<TimeSeries, OHLCA> for TestTaskB {
     }
 
     fn run(&self, data: &TimeSeries, _at: u64) -> Result<OHLCA, TaskError<OHLCA>> {
-        let a = data.time_series.get(&1).unwrap();
-        let b = data.time_series.get(&2).unwrap();
+        let (_, latest) = data.time_series.iter().last().unwrap();
 
         Ok(OHLCA {
-            open: (*a * 100) as f64,
-            high: (*b * 100) as f64,
-            low: (*a * 100) as f64,
-            close: (*b * 100) as f64,
+            open: (*latest * 100) as f64,
+            high: (*latest * 100) as f64,
+            low: (*latest * 100) as f64,
+            close: (*latest * 100) as f64,
             volume: 1024.0,
         })
     }
@@ -80,17 +79,31 @@ impl Runnable<TimeSeries, OHLCA> for TestTaskB {
 #[tokio::main]
 async fn main() {
     let data = Arc::new(RwLock::new(TimeSeries::default()));
+    let data_clone = Arc::clone(&data);
     let (ctx, mut receiver) = ContextBuilder::new()
         .with_task(TestTaskA)
         .with_task(TestTaskB)
-        .with_data(data)
+        .with_data(data_clone)
         .with_interval(TaskInterval::Seconds(3))
         .build();
 
     spawn_runner(ctx);
 
-    loop {
-        let data = receiver.recv().await.unwrap();
-        println!("{:?}", data);
-    }
+    let handle1 = tokio::spawn(async move {
+        loop {
+            let data = receiver.recv().await.unwrap();
+            println!("{:?}", data);
+        }
+    });
+
+    // spawn tasks to write to the data
+    let handle2 = tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        println!("Writing to data, expect to see TestTask_B result changes");
+        let mut data = data.write().await;
+        data.time_series.insert(3, 100);
+    });
+
+    let _ = tokio::join!(handle1, handle2);
+    
 }
