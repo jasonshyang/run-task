@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::RwLock;
+use tokio::signal;
 
 use run_task::prelude::*;
 
@@ -38,78 +39,98 @@ impl std::fmt::Debug for OHLCA {
 
 #[derive(Clone)]
 struct TestTaskA;
+#[derive(Clone)]
+struct TestTaskB;
 
 impl Runnable<TimeSeries, OHLCA> for TestTaskA {
     fn name(&self) -> String {
         "TestTask_A".to_string()
     }
 
-    fn run(&self, data: &TimeSeries, from: u64, to: u64) -> Result<OHLCA, TaskError<OHLCA>> {
-        let a = data.time_series.get(&1).unwrap();
-        let b = data.time_series.get(&2).unwrap();
-
+    fn run(&self, data: &TimeSeries, start: u64, end: u64) -> Result<OHLCA, TaskError<OHLCA>> {
+        let values: Vec<_> = data.time_series.values().collect();
         Ok(OHLCA {
-            open: *a as f64,
-            high: *b as f64,
-            low: *a as f64,
-            close: *b as f64,
-            volume: 1000.0,
-            from,
-            to,
+            open: *values[0] as f64,
+            high: **values.iter().max().unwrap() as f64,
+            low: **values.iter().max().unwrap() as f64,
+            close: *values[values.len() - 1] as f64,
+            volume: values.len() as f64,
+            from: start,
+            to: end,
         })
     }
 }
-
-struct TestTaskB;
 
 impl Runnable<TimeSeries, OHLCA> for TestTaskB {
     fn name(&self) -> String {
         "TestTask_B".to_string()
     }
 
-    fn run(&self, data: &TimeSeries, from: u64, to: u64) -> Result<OHLCA, TaskError<OHLCA>> {
-        let (_, latest) = data.time_series.iter().last().unwrap();
-
+    fn run(&self, data: &TimeSeries, start: u64, end: u64) -> Result<OHLCA, TaskError<OHLCA>> {
+        let values: Vec<_> = data.time_series.values().collect();
         Ok(OHLCA {
-            open: (*latest * 100) as f64,
-            high: (*latest * 100) as f64,
-            low: (*latest * 100) as f64,
-            close: (*latest * 100) as f64,
-            volume: 1024.0,
-            from,
-            to,
+            open: *values[0] as f64 * 100.0,
+            high: **values.iter().max().unwrap() as f64 * 100.0,
+            low: **values.iter().max().unwrap() as f64 * 100.0,
+            close: *values[values.len() - 1] as f64 * 100.0,
+            volume: values.len() as f64 * 100.0,
+            from: start,
+            to: end,
         })
     }
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = Arc::new(RwLock::new(TimeSeries::default()));
     let data_clone = Arc::clone(&data);
+    let runner_config = RunnerConfig::new(1024, 16, std::time::Duration::from_secs(5));
     let (ctx, mut receiver) = ContextBuilder::new()
+        .with_config(runner_config)
         .with_task(TestTaskA)
         .with_task(TestTaskB)
         .with_data(data_clone)
-        .with_interval(TaskInterval::Millis(450))
+        .with_interval(TaskInterval::Seconds(2))
         .build();
 
-    spawn_runner(ctx);
-
-    let handle1 = tokio::spawn(async move {
-        loop {
-            let data = receiver.recv().await.unwrap();
-            println!("{:?}", data);
+    let runner = Runner::new(ctx);
+    let runner_handle = tokio::spawn(async move {
+        if let Err(e) = runner.run().await {
+            eprintln!("Runner error: {:?}", e);
         }
     });
 
-    // spawn tasks to write to the data
-    let handle2 = tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-        println!("Writing to data, expect to see TestTask_B result changes");
-        let mut data = data.write().await;
-        data.time_series.insert(3, 100);
+    let receiver_handle = tokio::spawn(async move {
+        while let Some(data) = receiver.recv().await {
+            println!("Timestamp: {}", chrono::Utc::now());
+            println!("Data: {:?}", data);
+            println!("---");
+        }
     });
 
-    let _ = tokio::join!(handle1, handle2);
-    
+    let writer_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            println!("Writing to data...");
+            let mut data = data.write().await;
+            let next_key = data.time_series.keys().max().unwrap_or(&0) + 1;
+            data.time_series.insert(next_key, 42);
+        }
+    });
+
+    tokio::select! {
+        _ = signal::ctrl_c() => {
+            println!("Shutting down...");
+        }
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(15)) => {
+            println!("Runtime completed...");
+        }
+    }
+
+    runner_handle.abort();
+    receiver_handle.abort();
+    writer_handle.abort();
+
+    Ok(())
 }

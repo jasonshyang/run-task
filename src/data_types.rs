@@ -25,7 +25,6 @@ impl<D> DataSet<D> {
     pub fn take(&mut self, name: &str) -> Option<D> {
         self.data.remove(name)
     }
-
 }
 
 impl<T: fmt::Debug> fmt::Debug for DataSet<T> {

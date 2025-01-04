@@ -1,35 +1,27 @@
-use crate::task::TaskResult;
 use thiserror::Error;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinError;
 
+use crate::task::TaskResult;
+use crate::DataSet;
+
 #[derive(Error, Debug)]
 pub enum TaskError<D> {
-    #[error("TaskError: {0}")]
+    #[error("Task Error: {0}")]
     TaskError(String),
-    #[error("SendError: {0}")]
-    SendError(SendError<TaskResult<D>>),
-    #[error("RecvError: {0}")]
-    RecvError(RecvError),
-    #[error("JoinError: {0}")]
-    JoinError(JoinError),
-}
-
-impl<D> From<SendError<TaskResult<D>>> for TaskError<D> {
-    fn from(error: SendError<TaskResult<D>>) -> Self {
-        TaskError::SendError(error)
-    }
-}
-
-impl<D> From<RecvError> for TaskError<D> {
-    fn from(error: RecvError) -> Self {
-        TaskError::RecvError(error)
-    }
-}
-
-impl<D> From<JoinError> for TaskError<D> {
-    fn from(error: JoinError) -> Self {
-        TaskError::JoinError(error)
-    }
+    #[error("Task Send Error: {0}")]
+    TaskSendError(#[from] SendError<TaskResult<D>>),
+    #[error("DataSet Send Error: {0}")]
+    DataSetSendError(#[from] SendError<DataSet<D>>),
+    #[error("Receive Error: {0}")]
+    RecvError(#[from] RecvError),
+    #[error("Join Error: {0}")]
+    JoinError(#[from] JoinError),
+    #[error("Broadcast Error: {0}")]
+    BroadcastError(String),
+    #[error("Shutdown Error: {0}")]
+    ShutdownError(String),
+    #[error("Timeout Error")]
+    TimeoutError,
 }

@@ -29,20 +29,28 @@ impl<T, D> Worker<T, D> {
         Worker { task, ctx }
     }
 
-    pub async fn run(&mut self) -> Result<(), TaskError<D>> {
+    pub async fn run(&mut self, mut shutdown_rx: broadcast::Receiver<()>,) -> Result<(), TaskError<D>> {
         let name = self.task.name().clone();
 
         loop {
-            let (start, end) = self.ctx.receiver.recv().await?;
-            let data = self.ctx.data.read().await;
-            let result = self.task.run(&*data, start, end)?;
-            self.ctx
-                .sender
-                .send(TaskResult {
-                    name: name.clone(),
-                    result,
-                })
-                .await?;
+            tokio::select! {
+                _ = shutdown_rx.recv() => {
+                    break Ok(());
+                }
+                result = self.ctx.receiver.recv() => {
+                    match result {
+                        Ok((start, end)) => {
+                            let data = self.ctx.data.read().await;
+                            let result = self.task.run(&*data, start, end)?;
+                            self.ctx.sender.send(TaskResult {
+                                name: name.clone(),
+                                result,
+                            }).await?;
+                        }
+                        Err(e) => return Err(TaskError::RecvError(e)),
+                    }
+                }
+            }
         }
     }
 }
