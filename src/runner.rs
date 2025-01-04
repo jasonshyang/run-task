@@ -4,11 +4,11 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::interval;
 
+use crate::context::Context;
 use crate::data_types::DataSet;
-use crate::task::{TaskContext, TaskResult, Worker};
 use crate::error::TaskError;
 use crate::interval::TaskInterval;
-use crate::context::Context;
+use crate::task::{TaskContext, TaskResult, Worker};
 
 pub struct Runner<T, D> {
     pub ctx: Context<T, D>,
@@ -18,14 +18,12 @@ pub struct Runner<T, D> {
 impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
     pub fn new(ctx: Context<T, D>) -> Self {
         let (shutdown, _) = broadcast::channel(1);
-        Runner { 
-            ctx,
-            shutdown,
-        }
+        Runner { ctx, shutdown }
     }
 
     pub async fn shutdown(&self) -> Result<(), TaskError<D>> {
-        self.shutdown.send(())
+        self.shutdown
+            .send(())
             .map_err(|e| TaskError::ShutdownError(e.to_string()))?;
         Ok(())
     }
@@ -38,7 +36,8 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
         let mut interval = interval(Duration::from_micros(task_interval.as_micros()));
         let task_count = self.ctx.tasks.len();
 
-        let (time_broadcaster, _) = broadcast::channel::<(u64, u64)>(self.ctx.config.broadcast_channel_capacity);
+        let (time_broadcaster, _) =
+            broadcast::channel::<(u64, u64)>(self.ctx.config.broadcast_channel_capacity);
         let (output_sender, mut output_receiver) = mpsc::channel(task_count);
 
         // Spawn workers for each task which will run in the background waiting for time_broadcast signal to start the task
@@ -55,7 +54,6 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
             let handle = tokio::spawn(async move { worker.run(shutdown_rx).await });
             worker_handles.push(handle);
         }
-
 
         let consolidator = async move {
             loop {
@@ -83,7 +81,7 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
         };
 
         let consolidator_handle = tokio::spawn(consolidator);
-        
+
         for handle in worker_handles {
             handle.await??;
         }

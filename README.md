@@ -32,7 +32,7 @@ Build the Task Runner `Context` with `ContextBuilder`:
 - You can add config with `.with_config()`. The Runner has a default config, but you can overwrite that with your own `RunnerConfig`, and add that to the `ContextBuilder` by calling `.with_config()`.
 - You can add the `TaskInterval` with `.with_interval()`, this can be in `Micros`, `Millis`, `Seconds`, or `Minutes`, you should align that with your input data struct if you have a time data there. The `Runner` will output the data in the same format (e.g. millis or micros) based on this setting
 
-At the end, you need to call `.build()` which creating a `Context` for the `Runner`. You will get back 3 things:
+At the end, you need to call `.build()` to create a `Context` for the `Runner`. You will get back a `BuildResult` which is a tuple containing:
 - A `Context` for you to use to call the `Runner.run()`.
 - A `mpsc::Receiver`, you use this to get the output data by calling `.recv()`.
 - A shared reference to the underlying data, if you built the context with your own data, you can discard this.

@@ -29,7 +29,10 @@ impl<T, D> Worker<T, D> {
         Worker { task, ctx }
     }
 
-    pub async fn run(&mut self, mut shutdown_rx: broadcast::Receiver<()>,) -> Result<(), TaskError<D>> {
+    pub async fn run(
+        &mut self,
+        mut shutdown_rx: broadcast::Receiver<()>,
+    ) -> Result<(), TaskError<D>> {
         let name = self.task.name().clone();
 
         loop {

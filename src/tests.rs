@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use crate::prelude::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
     use tokio::time::Duration;
-    use crate::prelude::*;
 
     #[derive(Default)]
     struct TestData {
@@ -25,9 +25,14 @@ mod tests {
             format!("TestTask_{}", self.multiplier)
         }
 
-        fn run(&self, data: &TestData, _start: u64, _end: u64) -> Result<TestResult, TaskError<TestResult>> {
+        fn run(
+            &self,
+            data: &TestData,
+            _start: u64,
+            _end: u64,
+        ) -> Result<TestResult, TaskError<TestResult>> {
             Ok(TestResult {
-                value: data.value * self.multiplier
+                value: data.value * self.multiplier,
             })
         }
     }
@@ -36,7 +41,7 @@ mod tests {
     async fn test_single_task() {
         let data = Arc::new(RwLock::new(TestData { value: 42 }));
         let task = TestTask { multiplier: 2 };
-        
+
         let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task)
             .with_data(data.clone())
@@ -44,15 +49,13 @@ mod tests {
             .build();
 
         let runner = crate::Runner::new(ctx);
-        
-        tokio::spawn(async move {
-            runner.run().await
-        });
 
-        let result = tokio::time::timeout(
-            Duration::from_millis(200),
-            receiver.recv()
-        ).await.unwrap().unwrap();
+        tokio::spawn(async move { runner.run().await });
+
+        let result = tokio::time::timeout(Duration::from_millis(200), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(result.get("TestTask_2").unwrap().value, 84);
     }
@@ -62,7 +65,7 @@ mod tests {
         let data = Arc::new(RwLock::new(TestData { value: 10 }));
         let task1 = TestTask { multiplier: 2 };
         let task2 = TestTask { multiplier: 3 };
-        
+
         let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task1)
             .with_task(task2)
@@ -72,14 +75,12 @@ mod tests {
 
         let runner = crate::Runner::new(ctx);
 
-        tokio::spawn(async move {
-            runner.run().await
-        });
+        tokio::spawn(async move { runner.run().await });
 
-        let result = tokio::time::timeout(
-            Duration::from_millis(200),
-            receiver.recv()
-        ).await.unwrap().unwrap();
+        let result = tokio::time::timeout(Duration::from_millis(200), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(result.get("TestTask_2").unwrap().value, 20);
         assert_eq!(result.get("TestTask_3").unwrap().value, 30);
@@ -89,7 +90,7 @@ mod tests {
     async fn test_data_update() {
         let data = Arc::new(RwLock::new(TestData { value: 10 }));
         let task = TestTask { multiplier: 2 };
-        
+
         let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task)
             .with_data(data.clone())
@@ -97,15 +98,13 @@ mod tests {
             .build();
 
         let runner = crate::Runner::new(ctx);
-        
-        tokio::spawn(async move {
-            runner.run().await
-        });
 
-        let result1 = tokio::time::timeout(
-            Duration::from_millis(200),
-            receiver.recv()
-        ).await.unwrap().unwrap();
+        tokio::spawn(async move { runner.run().await });
+
+        let result1 = tokio::time::timeout(Duration::from_millis(200), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(result1.get("TestTask_2").unwrap().value, 20);
 
@@ -114,10 +113,10 @@ mod tests {
             data_guard.value = 20;
         }
 
-        let result2 = tokio::time::timeout(
-            Duration::from_millis(200),
-            receiver.recv()
-        ).await.unwrap().unwrap();
+        let result2 = tokio::time::timeout(Duration::from_millis(200), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(result2.get("TestTask_2").unwrap().value, 40);
     }
@@ -126,7 +125,7 @@ mod tests {
     async fn test_shutdown() {
         let data = Arc::new(RwLock::new(TestData { value: 10 }));
         let task = TestTask { multiplier: 2 };
-        
+
         let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task)
             .with_data(data.clone())
@@ -134,14 +133,12 @@ mod tests {
             .build();
 
         let runner = crate::Runner::new(ctx);
-        let runner_handle = tokio::spawn(async move {
-            runner.run().await
-        });
+        let runner_handle = tokio::spawn(async move { runner.run().await });
 
-        let _ = tokio::time::timeout(
-            Duration::from_millis(200),
-            receiver.recv()
-        ).await.unwrap().unwrap();
+        let _ = tokio::time::timeout(Duration::from_millis(200), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
 
         runner_handle.abort();
 
