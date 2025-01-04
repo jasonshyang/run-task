@@ -35,20 +35,25 @@ impl<T, D> Context<T, D> {
 }
 
 pub struct ContextBuilder<T: Default, D> {
-    config: RunnerConfig,
     tasks: Vec<Arc<dyn Runnable<T, D>>>,
-    data: Arc<RwLock<T>>,
+    data: Option<Arc<RwLock<T>>>,
     interval: TaskInterval,
+    config: RunnerConfig,
 }
 
 impl<T: Default, D> ContextBuilder<T, D> {
     pub fn new() -> Self {
         ContextBuilder {
-            config: RunnerConfig::default(),
             tasks: Vec::new(),
-            data: Arc::new(RwLock::new(Default::default())),
+            data: None,
             interval: TaskInterval::Seconds(5),
+            config: RunnerConfig::default(),
         }
+    }
+
+    pub fn with_data(mut self, data: Arc<RwLock<T>>) -> Self {
+        self.data = Some(data);
+        self
     }
 
     pub fn with_config(mut self, config: RunnerConfig) -> Self {
@@ -68,19 +73,26 @@ impl<T: Default, D> ContextBuilder<T, D> {
         self
     }
 
-    pub fn with_data(mut self, data: Arc<RwLock<T>>) -> Self {
-        self.data = data;
-        self
-    }
-
     pub fn with_interval(mut self, interval: TaskInterval) -> Self {
         self.interval = interval;
         self
     }
 
-    pub fn build(self) -> (Context<T, D>, mpsc::Receiver<DataSet<D>>) {
-        Context::new(self.config, self.tasks, self.data, self.interval)
+    pub fn build(self) -> (Context<T, D>, mpsc::Receiver<DataSet<D>>, Arc<RwLock<T>>) {
+        let data = self.data.unwrap_or_else(|| Arc::new(RwLock::new(T::default())));
+        let (ctx, rx) = Context::new(
+            self.config,
+            self.tasks,
+            Arc::clone(&data),
+            self.interval,
+        );
+        (ctx, rx, data)
     }
+
+    pub fn get_data_or_default(&self) -> Arc<RwLock<T>> {
+        self.data.clone().unwrap_or_else(|| Arc::new(RwLock::new(T::default())))
+    }
+
 }
 
 impl<T: Default, D> Default for ContextBuilder<T, D> {

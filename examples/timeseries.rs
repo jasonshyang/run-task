@@ -1,5 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
-use tokio::sync::RwLock;
+use std::collections::BTreeMap;
 use tokio::signal;
 
 use run_task::prelude::*;
@@ -82,15 +81,12 @@ impl Runnable<TimeSeries, OHLCA> for TestTaskB {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let data = Arc::new(RwLock::new(TimeSeries::default()));
-    let data_clone = Arc::clone(&data);
     let runner_config = RunnerConfig::new(1024, 16, std::time::Duration::from_secs(5));
-    let (ctx, mut receiver) = ContextBuilder::new()
-        .with_config(runner_config)
+    let (ctx, mut receiver, data) = ContextBuilder::new()
         .with_task(TestTaskA)
         .with_task(TestTaskB)
-        .with_data(data_clone)
         .with_interval(TaskInterval::Seconds(2))
+        .with_config(runner_config)
         .build();
 
     let runner = Runner::new(ctx);

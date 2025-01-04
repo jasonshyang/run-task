@@ -18,31 +18,52 @@ impl Runnable<YourInputDataType, YourOutputDataType> for TestTaskA {
         "Your Task Name".to_string()
     }
 
-    fn run(&self, data: &YourInputDataType, at: u64) -> Result<YourOutputDataType, TaskError<YourOutputDataType>> {
+    fn run(&self, data: &YourInputDataType, start: u64, end: u64) -> Result<YourOutputDataType, TaskError<YourOutputDataType>> {
         // you can implement your actual task here
-
+        // you can access the start and end of the time interval
         Ok(YourOutputDataType)
     }
 }
 ```
 
-Build the Task Runner Context with `ContextBuilder`, you can add your task by calling `.with_task()`, or call `.with_tasks()` to add a vector of tasks, add the underlying data wrapped with `Arc<RwLock<>>` so you can update the data as the task runner does its job.
+Build the Task Runner `Context` with `ContextBuilder`:
+- You can add your task with `.with_task()`, or `.with_tasks()` to add a vector of tasks.
+- You can add data with `.with_data()`. The underlying data needs to be wrapped with `Arc<RwLock<>>` so you can write to it when the runner runs. Because the `ContextBuilder` requires your input data struct to implement `Default`, you can skip the `.with_data()`, and a default instance of your struct will be created and wrapped in `Arc<RwLock<>>`
+- You can add config with `.with_config()`. The Runner has a default config, but you can overwrite that with your own `RunnerConfig`, and add that to the `ContextBuilder` by calling `.with_config()`.
+- You can add the `TaskInterval` with `.with_interval()`, this can be in `Micros`, `Millis`, `Seconds`, or `Minutes`, you should align that with your input data struct if you have a time data there. The `Runner` will output the data in the same format (e.g. millis or micros) based on this setting
 
-Creating a `Context` will give you back a `mpsc::Receiver`, you use this to get the output data.
+At the end, you need to call `.build()` which creating a `Context` for the `Runner`. You will get back 3 things:
+- A `Context` for you to use to call the `Runner.run()`.
+- A `mpsc::Receiver`, you use this to get the output data by calling `.recv()`.
+- A shared reference to the underlying data, if you built the context with your own data, you can discard this.
 
 ```rust
-let data = Arc::new(RwLock::new(DB::default()));
-let (ctx, mut receiver) = ContextBuilder::new()
+let runner_config = RunnerConfig::new(1024, 16, std::time::Duration::from_secs(5));
+let (ctx, mut receiver, data) = ContextBuilder::new()
     .with_task(TestTaskA)
     .with_task(TestTaskB)
-    .with_data(data)
-    .with_interval(TaskInterval::Seconds(3))
+    .with_interval(TaskInterval::Seconds(2))
+    .with_config(runner_config)
     .build();
+
+```
+Finally, you can create a new instance of `Runner` and run with the `Context`. 
+```rust
+let runner = Runner::new(ctx);
+let runner_handle = tokio::spawn(async move {
+    runner.run().await.unwrap();
+});
 ```
 
-Finally, you can use the `spawn_runner()` function to run the tasks (this will run the task runner inside a `tokio::spawn`). You get the data back by calling `receiver.recv()`.
+You get the data back by calling `receiver.recv()`.
 ```rust
-spawn_runner(ctx);
+let receiver_handle = tokio::spawn(async move {
+    while let Some(data) = receiver.recv().await {
+        println!("Timestamp: {}", chrono::Utc::now());
+        println!("Data: {:?}", data);
+        println!("---");
+    }
+});
 ```
 
 ### Example

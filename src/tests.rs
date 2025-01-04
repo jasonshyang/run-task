@@ -37,7 +37,7 @@ mod tests {
         let data = Arc::new(RwLock::new(TestData { value: 42 }));
         let task = TestTask { multiplier: 2 };
         
-        let (ctx, mut receiver) = ContextBuilder::new()
+        let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task)
             .with_data(data.clone())
             .with_interval(TaskInterval::Millis(100))
@@ -63,7 +63,7 @@ mod tests {
         let task1 = TestTask { multiplier: 2 };
         let task2 = TestTask { multiplier: 3 };
         
-        let (ctx, mut receiver) = ContextBuilder::new()
+        let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task1)
             .with_task(task2)
             .with_data(data.clone())
@@ -90,7 +90,7 @@ mod tests {
         let data = Arc::new(RwLock::new(TestData { value: 10 }));
         let task = TestTask { multiplier: 2 };
         
-        let (ctx, mut receiver) = ContextBuilder::new()
+        let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task)
             .with_data(data.clone())
             .with_interval(TaskInterval::Millis(100))
@@ -127,7 +127,7 @@ mod tests {
         let data = Arc::new(RwLock::new(TestData { value: 10 }));
         let task = TestTask { multiplier: 2 };
         
-        let (ctx, mut receiver) = ContextBuilder::new()
+        let (ctx, mut receiver, _) = ContextBuilder::new()
             .with_task(task)
             .with_data(data.clone())
             .with_interval(TaskInterval::Millis(100))
