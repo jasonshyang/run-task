@@ -21,7 +21,7 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
         Runner { ctx, shutdown }
     }
 
-    pub async fn shutdown(&self) -> Result<(), TaskError<D>> {
+    pub fn shutdown(&self) -> Result<(), TaskError<D>> {
         self.shutdown
             .send(())
             .map_err(|e| TaskError::ShutdownError(e.to_string()))?;
