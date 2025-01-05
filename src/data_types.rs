@@ -29,14 +29,11 @@ impl<D> DataSet<D> {
 
 impl<T: fmt::Debug> fmt::Debug for DataSet<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "DataSet {{")?;
-        writeln!(f, "    timestamp: {},", self.timestamp)?;
-        writeln!(f, "    data: {{")?;
-        for (name, result) in &self.data {
-            writeln!(f, "        {}: {:?},", name, result)?;
+        writeln!(f, "DataSet @ {}", self.timestamp)?;
+        writeln!(f, "├─ Items: {}", self.data.len())?;
+        for (key, value) in &self.data {
+            writeln!(f, "├─ {}: {:?}", key, value)?;
         }
-        writeln!(f, "    }}")?;
-        writeln!(f, "}}")?;
         Ok(())
     }
 }
