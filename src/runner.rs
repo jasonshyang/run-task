@@ -81,7 +81,7 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
                             return Err(TaskError::BroadcastError(e.to_string()));
                         }
 
-                        collect_results(&mut output_receiver, &mut dataset, task_count, timeout).await?;
+                        collect_results(&mut output_receiver, &mut dataset, task_count, timeout, &time_broadcaster).await?;
 
                         if let Err(e) = result_sender.send(dataset).await {
                             warn!(error = %e, "Failed to send dataset");
@@ -117,6 +117,7 @@ async fn collect_results<D>(
     dataset: &mut DataSet<D>,
     task_count: usize,
     timeout: Duration,
+    timeout_broadcast: &broadcast::Sender<(u64, u64)>,
 ) -> Result<(), TaskError<D>> {
     debug!("Starting result collection");
 
@@ -132,6 +133,9 @@ async fn collect_results<D>(
             }
             Err(_) => {
                 error!(timeout_ms = %timeout.as_millis(), "Timeout while collecting results");
+                if let Err(e) = timeout_broadcast.send((0, 0)) {
+                    warn!(error = %e, "Failed to broadcast timeout signal");
+                }
                 return Err(TaskError::TimeoutError);
             }
         }

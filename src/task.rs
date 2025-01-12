@@ -48,6 +48,11 @@ impl<T, D> Worker<T, D> {
                     match result {
                         Ok((start, end)) => {
                             debug!(start = %start, end = %end, "Processing time window");
+                            if start == 0 && end == 0 {
+                                debug!("Received shutdown signal, abandoning current work");
+                                continue;
+                            }
+
                             let data = self.ctx.data.read().await;
                             match self.task.run(&*data, start, end) {
                                 Ok(result) => {

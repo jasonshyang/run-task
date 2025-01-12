@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_shutdown() {
+    async fn test_abort_shutdown() {
         let data = Arc::new(RwLock::new(TestData { value: 10 }));
         let task = TestTask { multiplier: 2 };
 
@@ -144,4 +144,35 @@ mod tests {
 
         assert!(runner_handle.await.unwrap_err().is_cancelled());
     }
+
+    #[tokio::test]
+    async fn test_shutdown() {
+        let data = Arc::new(RwLock::new(TestData { value: 10 }));
+        let task = TestTask { multiplier: 2 };
+
+        let (ctx, mut receiver, _) = ContextBuilder::new()
+            .with_task(task)
+            .with_data(data.clone())
+            .with_interval(TaskInterval::Millis(100))
+            .build();
+
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let runner = crate::Runner::new(ctx);
+        let runner_handle = tokio::spawn(async move {
+            tokio::select! {
+                _ = shutdown_rx => {}
+                _ = runner.run() => {}
+            }
+        });
+
+        let _ = tokio::time::timeout(Duration::from_millis(200), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        shutdown_tx.send(()).unwrap();
+
+        runner_handle.await.unwrap();
+    }
 }
+
