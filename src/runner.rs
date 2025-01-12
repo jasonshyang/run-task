@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::interval;
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::context::Context;
 use crate::data_types::DataSet;
@@ -22,17 +23,24 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
     }
 
     pub fn shutdown(&self) -> Result<(), TaskError<D>> {
+        debug!("Initiating runner shutdown");
         self.shutdown
             .send(())
             .map_err(|e| TaskError::ShutdownError(e.to_string()))?;
+        debug!("Runner shutdown signal sent");
         Ok(())
     }
 
+    #[instrument(skip(self), name = "run_task_runner", fields(tasks_count = %self.ctx.tasks.len()))]
     pub async fn run(&self) -> Result<(), TaskError<D>> {
+        info!("Starting task runner");
         let mut shutdown = self.shutdown.subscribe();
         let timeout = self.ctx.config.shutdown_timeout;
         let result_sender = self.ctx.sender.clone();
         let task_interval = self.ctx.interval.clone();
+
+        debug!(interval_micros = %task_interval.as_micros(), "Configuring runner");
+
         let mut interval = interval(Duration::from_micros(task_interval.as_micros()));
         let task_count = self.ctx.tasks.len();
 
@@ -40,7 +48,7 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
             broadcast::channel::<(u64, u64)>(self.ctx.config.broadcast_channel_capacity);
         let (output_sender, mut output_receiver) = mpsc::channel(task_count);
 
-        // Spawn workers for each task which will run in the background waiting for time_broadcast signal to start the task
+        debug!("Spawning {} worker tasks", task_count);
         let mut worker_handles = Vec::new();
         for task in self.ctx.tasks.iter() {
             let task = Arc::clone(task);
@@ -56,9 +64,11 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
         }
 
         let consolidator = async move {
+            debug!("Starting result consolidator");
             loop {
                 tokio::select! {
                     _ = shutdown.recv() => {
+                        info!("Received shutdown signal, stopping consolidator");
                         break;
                     }
                     _ = interval.tick() => {
@@ -67,13 +77,16 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
                         let mut dataset = DataSet::new(end);
 
                         if let Err(e) = time_broadcaster.send((start, end)) {
+                            warn!(error = %e, "Failed to broadcast time window");
                             return Err(TaskError::BroadcastError(e.to_string()));
                         }
 
                         collect_results(&mut output_receiver, &mut dataset, task_count, timeout).await?;
 
-                        result_sender.send(dataset).await
-                            .map_err(|e| TaskError::DataSetSendError(e))?;
+                        if let Err(e) = result_sender.send(dataset).await {
+                            warn!(error = %e, "Failed to send dataset");
+                            return Err(TaskError::DataSetSendError(e));
+                        }
                     }
                 }
             }
@@ -82,32 +95,48 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
 
         let consolidator_handle = tokio::spawn(consolidator);
 
+        debug!("Waiting for worker tasks to complete");
         for handle in worker_handles {
             handle.await??;
         }
+        debug!("Worker tasks completed, waiting for consolidator");
         consolidator_handle.await??;
+        info!("Runner shutdown complete");
 
         Ok(())
     }
 }
 
+#[instrument(
+    skip(output_receiver, dataset),
+    fields(task_count = %task_count),
+    name = "collect_task_results"
+)]
 async fn collect_results<D>(
     output_receiver: &mut mpsc::Receiver<TaskResult<D>>,
     dataset: &mut DataSet<D>,
     task_count: usize,
     timeout: Duration,
 ) -> Result<(), TaskError<D>> {
-    for _ in 0..task_count {
+    debug!("Starting result collection");
+
+    for i in 0..task_count {
         match tokio::time::timeout(timeout, output_receiver.recv()).await {
             Ok(Some(TaskResult { name, result })) => {
+                debug!(task_name = %name, remaining = %(task_count - i - 1), "Collected task result");
                 dataset.insert(&name, result);
             }
-            Ok(None) => break,
+            Ok(None) => {
+                warn!("Result channel closed unexpectedly");
+                break;
+            }
             Err(_) => {
+                error!(timeout_ms = %timeout.as_millis(), "Timeout while collecting results");
                 return Err(TaskError::TimeoutError);
             }
         }
     }
+    debug!("Result collection complete");
     Ok(())
 }
 

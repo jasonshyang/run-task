@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, RwLock};
+use tracing::{debug, error, info, instrument};
 
 use crate::TaskError;
 
@@ -29,28 +30,46 @@ impl<T, D> Worker<T, D> {
         Worker { task, ctx }
     }
 
+    #[instrument(skip(self, shutdown_rx), fields(task_name = %self.task.name()))]
     pub async fn run(
         &mut self,
         mut shutdown_rx: broadcast::Receiver<()>,
     ) -> Result<(), TaskError<D>> {
         let name = self.task.name().clone();
+        debug!("Starting worker task");
 
         loop {
             tokio::select! {
                 _ = shutdown_rx.recv() => {
+                    info!("Received shutdown signal");
                     break Ok(());
                 }
                 result = self.ctx.receiver.recv() => {
                     match result {
                         Ok((start, end)) => {
+                            debug!(start = %start, end = %end, "Processing time window");
                             let data = self.ctx.data.read().await;
-                            let result = self.task.run(&*data, start, end)?;
-                            self.ctx.sender.send(TaskResult {
-                                name: name.clone(),
-                                result,
-                            }).await?;
+                            match self.task.run(&*data, start, end) {
+                                Ok(result) => {
+                                    debug!("Task completed successfully");
+                                    if let Err(e) = self.ctx.sender.send(TaskResult {
+                                        name: name.clone(),
+                                        result,
+                                    }).await {
+                                        error!(error = %e, "Failed to send task result");
+                                        return Err(e.into());
+                                    }
+                                }
+                                Err(e) => {
+                                    error!(error = %e, "Task execution failed");
+                                    return Err(e);
+                                }
+                            }
                         }
-                        Err(e) => return Err(TaskError::RecvError(e)),
+                        Err(e) => {
+                            error!(error = %e, "Failed to receive time window");
+                            return Err(TaskError::RecvError(e));
+                        }
                     }
                 }
             }
