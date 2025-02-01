@@ -125,7 +125,7 @@ async fn collect_results<Output>(
                 debug!(task_name = %name, remaining = %(task_count - i - 1), "Collected task result");
                 match result {
                     Some(result) => dataset.insert(&name, result),
-                    None => error!("Task {} returned None", name),
+                    None => error!("Task {} returned None", name), // TODO: Add config option to ignore None results
                 }
             }
             None => {
