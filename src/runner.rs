@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::interval;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::context::Context;
 use crate::data_types::DataSet;
@@ -123,7 +123,10 @@ async fn collect_results<Output>(
         match output_receiver.recv().await {
             Some(TaskResult { name, result }) => {
                 debug!(task_name = %name, remaining = %(task_count - i - 1), "Collected task result");
-                dataset.insert(&name, result);
+                match result {
+                    Some(result) => dataset.insert(&name, result),
+                    None => error!("Task {} returned None", name),
+                }
             }
             None => {
                 warn!("Result channel closed unexpectedly");

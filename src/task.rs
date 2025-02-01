@@ -23,7 +23,7 @@ pub struct TaskContext<Input, Output> {
 
 pub struct TaskResult<Output> {
     pub name: String,
-    pub result: Output,
+    pub result: Option<Output>,
 }
 
 impl<Input, Output> Worker<Input, Output> {
@@ -58,6 +58,13 @@ impl<Input, Output> Worker<Input, Output> {
                                 Ok(guard) => guard,
                                 Err(_) => {
                                     error!("Data read timeout, abandoning current work");
+                                    if let Err(e) = self.ctx.sender.send(TaskResult {
+                                        name: name.clone(),
+                                        result: None,
+                                    }).await {
+                                        error!(error = %e, "Failed to send task result");
+                                        return Err(e.into());
+                                    }
                                     continue;
                                 }
                             };
@@ -67,7 +74,7 @@ impl<Input, Output> Worker<Input, Output> {
                                     debug!("Task completed successfully");
                                     if let Err(e) = self.ctx.sender.send(TaskResult {
                                         name: name.clone(),
-                                        result,
+                                        result: Some(result),
                                     }).await {
                                         error!(error = %e, "Failed to send task result");
                                         return Err(e.into());
