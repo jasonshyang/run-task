@@ -4,29 +4,29 @@ use tracing::{debug, error, info, instrument};
 
 use crate::TaskError;
 
-pub trait Runnable<T, D>: Send + Sync {
+pub trait Runnable<Input, Output>: Send + Sync {
     fn name(&self) -> String;
-    fn run(&self, data: &T, start: u64, end: u64) -> Result<D, TaskError<D>>;
+    fn run(&self, data: &Input, start: u64, end: u64) -> Result<Output, TaskError<Output>>;
 }
 
-pub struct Worker<T, D> {
-    pub task: Arc<dyn Runnable<T, D>>,
-    pub ctx: TaskContext<T, D>,
+pub struct Worker<Input, Output> {
+    task: Arc<dyn Runnable<Input, Output>>,
+    ctx: TaskContext<Input, Output>,
 }
 
-pub struct TaskContext<T, D> {
-    pub data: Arc<RwLock<T>>,
+pub struct TaskContext<Input, Output> {
+    pub data: Arc<RwLock<Input>>,
     pub receiver: broadcast::Receiver<(u64, u64)>,
-    pub sender: mpsc::Sender<TaskResult<D>>,
+    pub sender: mpsc::Sender<TaskResult<Output>>,
 }
 
-pub struct TaskResult<D> {
+pub struct TaskResult<Output> {
     pub name: String,
-    pub result: D,
+    pub result: Output,
 }
 
-impl<T, D> Worker<T, D> {
-    pub fn new(task: Arc<dyn Runnable<T, D>>, ctx: TaskContext<T, D>) -> Self {
+impl<Input, Output> Worker<Input, Output> {
+    pub fn new(task: Arc<dyn Runnable<Input, Output>>, ctx: TaskContext<Input, Output>) -> Self {
         Worker { task, ctx }
     }
 
@@ -34,7 +34,7 @@ impl<T, D> Worker<T, D> {
     pub async fn run(
         &mut self,
         mut shutdown_rx: broadcast::Receiver<()>,
-    ) -> Result<(), TaskError<D>> {
+    ) -> Result<(), TaskError<Output>> {
         let name = self.task.name().clone();
         debug!("Starting worker task");
 

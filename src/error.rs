@@ -7,13 +7,13 @@ use crate::task::TaskResult;
 use crate::DataSet;
 
 #[derive(Error, Debug)]
-pub enum TaskError<D> {
+pub enum TaskError<Output> {
     #[error("Task Error: {0}")]
     TaskError(String),
     #[error("Task Send Error: {0}")]
-    TaskSendError(#[from] SendError<TaskResult<D>>),
+    TaskSendError(#[from] SendError<TaskResult<Output>>),
     #[error("DataSet Send Error: {0}")]
-    DataSetSendError(#[from] SendError<DataSet<D>>),
+    DataSetSendError(#[from] SendError<DataSet<Output>>),
     #[error("Receive Error: {0}")]
     RecvError(#[from] RecvError),
     #[error("Join Error: {0}")]

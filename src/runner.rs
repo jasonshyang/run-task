@@ -11,18 +11,18 @@ use crate::error::TaskError;
 use crate::interval::TaskInterval;
 use crate::task::{TaskContext, TaskResult, Worker};
 
-pub struct Runner<T, D> {
-    pub ctx: Context<T, D>,
+pub struct Runner<Input, Output> {
+    pub ctx: Context<Input, Output>,
     shutdown: broadcast::Sender<()>,
 }
 
-impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
-    pub fn new(ctx: Context<T, D>) -> Self {
+impl<Input: Send + Sync + 'static, Output: Send + Sync + 'static> Runner<Input, Output> {
+    pub fn new(ctx: Context<Input, Output>) -> Self {
         let (shutdown, _) = broadcast::channel(1);
         Runner { ctx, shutdown }
     }
 
-    pub fn shutdown(&self) -> Result<(), TaskError<D>> {
+    pub fn shutdown(&self) -> Result<(), TaskError<Output>> {
         debug!("Initiating runner shutdown");
         self.shutdown
             .send(())
@@ -32,7 +32,7 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
     }
 
     #[instrument(skip(self), name = "run_task_runner", fields(tasks_count = %self.ctx.tasks.len()))]
-    pub async fn run(&self) -> Result<(), TaskError<D>> {
+    pub async fn run(&self) -> Result<(), TaskError<Output>> {
         info!("Starting task runner");
         let mut shutdown = self.shutdown.subscribe();
         let timeout = self.ctx.config.shutdown_timeout;
@@ -112,13 +112,13 @@ impl<T: Send + Sync + 'static, D: Send + Sync + 'static> Runner<T, D> {
     fields(task_count = %task_count),
     name = "collect_task_results"
 )]
-async fn collect_results<D>(
-    output_receiver: &mut mpsc::Receiver<TaskResult<D>>,
-    dataset: &mut DataSet<D>,
+async fn collect_results<Output>(
+    output_receiver: &mut mpsc::Receiver<TaskResult<Output>>,
+    dataset: &mut DataSet<Output>,
     task_count: usize,
     timeout: Duration,
     timeout_broadcast: &broadcast::Sender<(u64, u64)>,
-) -> Result<(), TaskError<D>> {
+) -> Result<(), TaskError<Output>> {
     debug!("Starting result collection");
 
     for i in 0..task_count {
