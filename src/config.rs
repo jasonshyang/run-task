@@ -1,4 +1,4 @@
-use std::time::Duration;
+use tokio::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct RunnerConfig {

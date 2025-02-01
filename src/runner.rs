@@ -42,7 +42,6 @@ impl<Input: Send + Sync + 'static, Output: Send + Sync + 'static> Runner<Input, 
         debug!(interval_micros = %task_interval.as_micros(), "Configuring runner");
 
         let mut interval = interval(Duration::from_micros(task_interval.as_micros()));
-        let timeout_secs = task_interval.as_secs();
         let task_count = self.ctx.tasks.len();
 
         let (time_broadcaster, _) =
@@ -60,9 +59,7 @@ impl<Input: Send + Sync + 'static, Output: Send + Sync + 'static> Runner<Input, 
             };
             let mut worker = Worker::new(task, task_ctx);
             let shutdown_rx = self.shutdown.subscribe();
-            let handle = tokio::spawn(async move { 
-                worker.run(shutdown_rx, timeout_secs).await 
-            });
+            let handle = tokio::spawn(async move { worker.run(shutdown_rx, timeout).await });
             worker_handles.push(handle);
         }
 
@@ -84,7 +81,7 @@ impl<Input: Send + Sync + 'static, Output: Send + Sync + 'static> Runner<Input, 
                             return Err(TaskError::BroadcastError(e.to_string()));
                         }
 
-                        collect_results(&mut output_receiver, &mut dataset, task_count, timeout, &time_broadcaster).await?;
+                        collect_results(&mut output_receiver, &mut dataset, task_count).await?;
 
                         if let Err(e) = result_sender.send(dataset).await {
                             warn!(error = %e, "Failed to send dataset");
@@ -119,8 +116,6 @@ async fn collect_results<Output>(
     output_receiver: &mut mpsc::Receiver<TaskResult<Output>>,
     dataset: &mut DataSet<Output>,
     task_count: usize,
-    timeout: Duration,
-    timeout_broadcast: &broadcast::Sender<(u64, u64)>,
 ) -> Result<(), TaskError<Output>> {
     debug!("Starting result collection");
 
