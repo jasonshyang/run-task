@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::interval;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use crate::context::Context;
 use crate::data_types::DataSet;
@@ -42,6 +42,7 @@ impl<Input: Send + Sync + 'static, Output: Send + Sync + 'static> Runner<Input, 
         debug!(interval_micros = %task_interval.as_micros(), "Configuring runner");
 
         let mut interval = interval(Duration::from_micros(task_interval.as_micros()));
+        let timeout_secs = task_interval.as_secs();
         let task_count = self.ctx.tasks.len();
 
         let (time_broadcaster, _) =
@@ -59,7 +60,9 @@ impl<Input: Send + Sync + 'static, Output: Send + Sync + 'static> Runner<Input, 
             };
             let mut worker = Worker::new(task, task_ctx);
             let shutdown_rx = self.shutdown.subscribe();
-            let handle = tokio::spawn(async move { worker.run(shutdown_rx).await });
+            let handle = tokio::spawn(async move { 
+                worker.run(shutdown_rx, timeout_secs).await 
+            });
             worker_handles.push(handle);
         }
 
@@ -122,21 +125,14 @@ async fn collect_results<Output>(
     debug!("Starting result collection");
 
     for i in 0..task_count {
-        match tokio::time::timeout(timeout, output_receiver.recv()).await {
-            Ok(Some(TaskResult { name, result })) => {
+        match output_receiver.recv().await {
+            Some(TaskResult { name, result }) => {
                 debug!(task_name = %name, remaining = %(task_count - i - 1), "Collected task result");
                 dataset.insert(&name, result);
             }
-            Ok(None) => {
+            None => {
                 warn!("Result channel closed unexpectedly");
                 break;
-            }
-            Err(_) => {
-                error!(timeout_ms = %timeout.as_millis(), "Timeout while collecting results");
-                if let Err(e) = timeout_broadcast.send((0, 0)) {
-                    warn!(error = %e, "Failed to broadcast timeout signal");
-                }
-                return Err(TaskError::TimeoutError);
             }
         }
     }

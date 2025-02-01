@@ -8,7 +8,11 @@ use crate::interval::TaskInterval;
 use crate::task::Runnable;
 
 pub type DataReceiver<Output> = mpsc::Receiver<DataSet<Output>>;
-pub type BuildResult<Input, Output> = (Context<Input, Output>, DataReceiver<Output>, Arc<RwLock<Input>>);
+pub type BuildResult<Input, Output> = (
+    Context<Input, Output>,
+    DataReceiver<Output>,
+    Arc<RwLock<Input>>,
+);
 
 pub struct Context<Input, Output> {
     pub config: RunnerConfig,

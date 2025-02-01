@@ -46,7 +46,6 @@ impl<Output> DataSet<Output> {
     pub fn into_inner(self) -> HashMap<String, Output> {
         self.data
     }
-
 }
 
 impl<Input: fmt::Debug> fmt::Debug for DataSet<Input> {

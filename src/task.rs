@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::time::{self, Duration};
 use tracing::{debug, error, info, instrument};
 
 use crate::TaskError;
@@ -34,8 +35,10 @@ impl<Input, Output> Worker<Input, Output> {
     pub async fn run(
         &mut self,
         mut shutdown_rx: broadcast::Receiver<()>,
+        timeout_secs: u64,
     ) -> Result<(), TaskError<Output>> {
         let name = self.task.name().clone();
+        let timeout_duration = Duration::from_secs(timeout_secs);
         debug!("Starting worker task");
 
         loop {
@@ -48,12 +51,18 @@ impl<Input, Output> Worker<Input, Output> {
                     match result {
                         Ok((start, end)) => {
                             debug!(start = %start, end = %end, "Processing time window");
-                            if start == 0 && end == 0 {
-                                debug!("Received shutdown signal, abandoning current work");
-                                continue;
-                            }
+                            
+                            let data = match time::timeout(
+                                timeout_duration,
+                                self.ctx.data.read(),
+                            ).await {
+                                Ok(guard) => guard,
+                                Err(_) => {
+                                    error!("Data read timeout, abandoning current work");
+                                    continue;
+                                }
+                            };
 
-                            let data = self.ctx.data.read().await;
                             match self.task.run(&*data, start, end) {
                                 Ok(result) => {
                                     debug!("Task completed successfully");
