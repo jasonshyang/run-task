@@ -130,7 +130,7 @@ async fn collect_results<Output>(
             }
             None => {
                 warn!("Result channel closed unexpectedly");
-                break;
+                return Err(TaskError::TaskError("Result channel closed unexpectedly".to_string()));
             }
         }
     }
